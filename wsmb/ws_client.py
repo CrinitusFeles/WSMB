@@ -24,16 +24,10 @@ class WebSocket:
         self.on_error: Callable[..., Coroutine] | None = None
         self.on_token_error: Callable[..., Coroutine] | None = None
         self.on_critical_error: Callable[..., Coroutine] | None = None
-        self._destination: str | None = None
         self._last_connection_data: tuple = ()
         self.read_task: asyncio.Task | None = None
         self.connection_status: bool = False
 
-    def set_destination(self, dst: str | None) -> None:
-        self._destination = dst
-
-    def get_destination(self) -> str | None:
-        return self._destination
 
     def handle_redirect(self, uri: str) -> None:
         # Update the state of this instance to connect to a new URI.
@@ -169,13 +163,18 @@ class WebSocket:
         except AuthorizationError:
             ...
 
-    async def disconnect(self) -> None:
+    async def disconnect(self, manual: bool = False) -> None:
         if self.connection_status:
             self.connection_status = False
+            reason = ''
+            if manual:
+                reason = 'Manual disconnect'
             if self.read_task:
+                if manual:
+                    self.read_task.remove_done_callback(self._read_done_callback)
                 self.read_task.cancel()
                 self.read_task = None
-            await self._protocol.close()
+            await self._protocol.close(reason=reason)
             logger.debug('Disconnected')
         else:
             logger.warning('WS client was not connected')

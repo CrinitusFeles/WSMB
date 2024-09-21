@@ -1,5 +1,6 @@
 from pydantic import ValidationError
 from loguru import logger
+from wsmb.broker_client import BrokerClient
 from wsmb.msg import Msg
 
 
@@ -19,8 +20,12 @@ class Channel:
 class BrokerServer:
     def __init__(self) -> None:
         self.channels: dict[str, Channel] = {}
+        self.client: BrokerClient | None = None
 
     def subscribe(self, name: str, ws) -> None:
+        if self.client and name == self.client:
+            raise ValueError('Channal\'s name must not be the same as the '\
+                             'server\'s client')
         ch: Channel | None = self.channels.get(name, None)
         if ch is not None:
             ch.subscribe(ws)
@@ -42,6 +47,11 @@ class BrokerServer:
     async def route(self, data: str, ws) -> None:
         msg = await self._parse_msg(data, ws)
         if msg:
+            if self.client:
+                if msg.dst == self.client.name:
+                    self.client.set_ws(ws)
+                    await self.client.route(data)
+                    return
             publisher: Channel | None = self.channels.get(msg.src, None)
             if not publisher:
                 raise ValueError('SRC not in channels')
