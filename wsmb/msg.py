@@ -8,6 +8,7 @@ class Msg(BaseModel):
     dst: str
     method: str
     need_answer: bool = False
+    is_answer: bool = False
     msg_id: UUID = Field(default_factory=uuid4)
     data: dict | tuple
 
@@ -16,6 +17,7 @@ class Msg(BaseModel):
                    dst=self.src if dst == '' else dst,
                    method=self.method,
                    need_answer=False,
+                   is_answer=True,
                    data={'answer': data},
                    msg_id=self.msg_id)
 
@@ -26,4 +28,5 @@ class Msg(BaseModel):
                    data={'exception': exception_type,
                          'details': details},
                    need_answer=False,
+                   is_answer=True,
                    msg_id=self.msg_id)

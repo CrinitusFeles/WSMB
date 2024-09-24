@@ -1,3 +1,6 @@
+from enum import Enum
+from functools import wraps
+from typing import Awaitable, Callable  #, Coroutine
 from pydantic import ValidationError
 from loguru import logger
 from wsmb.broker_client import BrokerClient
@@ -21,6 +24,22 @@ class BrokerServer:
     def __init__(self) -> None:
         self.channels: dict[str, Channel] = {}
         self.client: BrokerClient | None = None
+        self._inspect_methods: dict[str, Callable] = {}
+
+    def _inspect(self, endpoint: str | Enum,
+                  handler: Callable[[Msg], Awaitable[bool]]) -> None:
+        if isinstance(endpoint, Enum):
+            endpoint = endpoint.name
+        self._inspect_methods.update({endpoint: handler})
+
+    def inspect(self, endpoint: str | Enum) -> Callable:
+        def _subscriber(func: Callable[[Msg], Awaitable[bool]]):
+            self._inspect(endpoint, func)
+            @wraps(func)
+            def wrapper(msg: Msg):
+                return func(msg)
+            return wrapper
+        return _subscriber
 
     def subscribe(self, name: str, ws) -> None:
         if self.client and name == self.client:
@@ -46,22 +65,29 @@ class BrokerServer:
 
     async def route(self, data: str, ws) -> None:
         msg = await self._parse_msg(data, ws)
-        if msg:
-            if self.client:
-                if msg.dst == self.client.name:
-                    self.client.set_ws(ws)
-                    await self.client.route(data)
-                    return
-            publisher: Channel | None = self.channels.get(msg.src, None)
-            if not publisher:
-                raise ValueError('SRC not in channels')
-            if ws not in publisher.subscribers:
-                raise ValueError('Attempt to access of alien channel')
-            destination: Channel | None = self.channels.get(msg.dst, None)
-            if destination:
-                await destination.publish(msg)
-            else:
-                ...
+        if not msg:
+            return
+        if self.client:
+            if msg.dst == self.client.name:
+                self.client.set_ws(ws)
+                await self.client.route(data)
+                return
+        publisher: Channel | None = self.channels.get(msg.src, None)
+        if not publisher:
+            raise ValueError('SRC not in channels')
+        if ws not in publisher.subscribers:
+            raise ValueError('Attempt to access of alien channel')
+        destination: Channel | None = self.channels.get(msg.dst, None)
+        inspector: Callable | None = self._inspect_methods.get(msg.method, None)
+        if inspector:
+            result: bool = await inspector(msg)
+            if not result:
+                logger.debug(f'Inspector deny msg: {msg}')
+                return
+        if destination:
+            await destination.publish(msg)
+        else:
+            ...
 
     async def _parse_msg(self, data: str, ws) -> Msg | None:
         try:

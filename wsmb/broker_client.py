@@ -54,8 +54,12 @@ class BrokerClient:
         except ValidationError:
             logger.error(f'got incorrect message: {data}')
             return None
-
-        if self._handle_answer(msg):
+        if msg.dst != self.name:
+            logger.error(f'Got msg with incorrect destination '\
+                         f'({msg.src}->{msg.dst} (expected: {self.name})\n{msg}')
+            return None
+        if msg.is_answer:
+            self._handle_answer(msg)
             return None
         handlers: list[Callable[..., Coroutine | Any]] = self.endpoints.get(msg.method, [])
         if len(handlers):
@@ -64,23 +68,21 @@ class BrokerClient:
         else:
             logger.warning(f'unsubscribed method: {data}')
 
-    def _handle_answer(self, msg: Msg) -> bool:
+    def _handle_answer(self, msg: Msg):
         answer: Task | None = self._waiting_tasks.get(msg.msg_id, None)
-        if answer:
-            if msg.dst == self.name:
-                answer.cancel()
-                self._waiting_tasks.pop(msg.msg_id)
-                if isinstance(msg.data, dict):
-                    self._tasks_result.update({msg.msg_id: msg.data})  # type: ignore
-                else:
-                    logger.error('Incorrect answer format! Answer data must be dict')
-                return True
-            else:
-                logger.error(f'Got msg with incorrect destination '\
-                            f'({msg.src}->{msg.dst} (expected: {self.name}))!')
-        return False
+        if not answer:
+            logger.warning('Got answer but it\'s not in waiting list. '\
+                           'Check timeout')
+            return
+        answer.cancel()
+        self._waiting_tasks.pop(msg.msg_id)
+        if isinstance(msg.data, dict):
+            self._tasks_result.update({msg.msg_id: msg.data})  # type: ignore
+        else:
+            logger.error('Incorrect answer format! Answer data must be dict')
 
-    async def _exec_handler(self, handler: Callable[..., Coroutine], msg: Msg):
+    async def _exec_handler(self, handler: Callable[..., Coroutine],
+                            msg: Msg) -> None:
         if asyncio.iscoroutinefunction(handler):
             await self._execute_coroutine(handler, msg)
         else:
@@ -91,9 +93,10 @@ class BrokerClient:
     def _execute_func(self, handler: Callable, msg: Msg) -> Msg | None:
         exception: str = ''
         exception_type: str = ''
+        result: Any = None
         try:
             if isinstance(msg.data, dict):
-                result: Any = handler(**msg.data)
+                result = handler(**msg.data)
             else:
                 result = handler(*msg.data)
         except Exception as err:

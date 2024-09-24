@@ -27,6 +27,7 @@ class WebSocket:
         self._last_connection_data: tuple = ()
         self.read_task: asyncio.Task | None = None
         self.connection_status: bool = False
+        self._uri: str = ''
 
 
     def handle_redirect(self, uri: str) -> None:
@@ -144,7 +145,7 @@ class WebSocket:
             return False
 
         self._protocol = protocol
-        logger.success('Connected')
+        logger.success(f'Connected to {self._uri}')
         self.read_task = self._loop.create_task(self._read_routine())
         self.read_task.add_done_callback(self._read_done_callback)
         if self.on_connected:
@@ -175,7 +176,7 @@ class WebSocket:
                 self.read_task.cancel()
                 self.read_task = None
             await self._protocol.close(reason=reason)
-            logger.debug('Disconnected')
+            logger.debug(f'Disconnected from {self._uri}')
         else:
             logger.warning('WS client was not connected')
 
