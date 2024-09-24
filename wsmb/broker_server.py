@@ -1,6 +1,6 @@
-from enum import Enum
+from enum import Enum, EnumType
 from functools import wraps
-from typing import Awaitable, Callable  #, Coroutine
+from typing import Awaitable, Callable, Type  #, Coroutine
 from pydantic import ValidationError
 from loguru import logger
 from wsmb.broker_client import BrokerClient
@@ -20,20 +20,26 @@ class Channel:
             await s.send_text(msg.model_dump_json())
 
 
+INSPECTOR = Callable[[Msg], Awaitable[tuple[bool, Msg]]]
+
+
 class BrokerServer:
     def __init__(self) -> None:
         self.channels: dict[str, Channel] = {}
         self.client: BrokerClient | None = None
-        self._inspect_methods: dict[str, Callable] = {}
+        self._inspect_methods: dict[str, INSPECTOR] = {}
 
-    def _inspect(self, endpoint: str | Enum,
-                  handler: Callable[[Msg], Awaitable[bool]]) -> None:
+    def _inspect(self, endpoint: str | Enum | Type[Enum],
+                 handler: INSPECTOR) -> None:
+        if isinstance(endpoint, EnumType):
+            self._inspect_methods.update({ep.name: handler for ep in endpoint})
+            return
         if isinstance(endpoint, Enum):
             endpoint = endpoint.name
         self._inspect_methods.update({endpoint: handler})
 
-    def inspect(self, endpoint: str | Enum) -> Callable:
-        def _subscriber(func: Callable[[Msg], Awaitable[bool]]):
+    def inspect(self, endpoint: str | Enum | Type[Enum]) -> Callable:
+        def _subscriber(func: INSPECTOR):# -> _Wrapped[Callable[[Msg], Any], Awaitable[tuple[bool, Msg]...:
             self._inspect(endpoint, func)
             @wraps(func)
             def wrapper(msg: Msg):
@@ -53,7 +59,6 @@ class BrokerServer:
             ch.subscribe(ws)
             self.channels.update({name: ch})
 
-
     def unsubscribe(self, ch_name: str, ws) -> None:
         ch: Channel | None = self.channels.get(ch_name, None)
         if ch is None:
@@ -64,7 +69,7 @@ class BrokerServer:
             self.channels.pop(ch_name)
 
     async def route(self, data: str, ws) -> None:
-        msg = await self._parse_msg(data, ws)
+        msg: Msg | None = await self._parse_msg(data, ws)
         if not msg:
             return
         if self.client:
@@ -78,12 +83,14 @@ class BrokerServer:
         if ws not in publisher.subscribers:
             raise ValueError('Attempt to access of alien channel')
         destination: Channel | None = self.channels.get(msg.dst, None)
-        inspector: Callable | None = self._inspect_methods.get(msg.method, None)
-        if inspector:
-            result: bool = await inspector(msg)
-            if not result:
-                logger.debug(f'Inspector deny msg: {msg}')
-                return
+        if not msg.is_answer:
+            inspector: INSPECTOR | None = self._inspect_methods.get(msg.method, None)
+            if inspector:
+                result, answer = await inspector(msg)
+                if not result:
+                    logger.debug(f'Inspector deny msg: {msg}')
+                    await ws.send_text(answer.model_dump_json())
+                    return
         if destination:
             await destination.publish(msg)
         else:

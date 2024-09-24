@@ -2,7 +2,7 @@
 import asyncio
 from asyncio import Task
 from enum import Enum
-from functools import wraps
+from functools import wraps, partial
 from typing import Any, Callable, Coroutine
 from uuid import UUID
 from loguru import logger
@@ -19,13 +19,21 @@ class BrokerClient:
         self.name: str = ''
         self._waiting_tasks: dict[UUID, asyncio.Task] = {}
         self._tasks_result: dict[UUID, Any] = {}
+        self.on_exception: Callable[[str, str], None] | None = None
+
+    def include_router(self, router: Router, *args) -> None:
+        if len(args) > 0:
+            new_endpoints: dict = {}
+            for ep, handlers in router.endpoints.items():
+                new_handlers: list = [partial(handler, *args)
+                                      for handler in handlers]
+                new_endpoints.update({ep: new_handlers})
+            router.endpoints = new_endpoints
+        self.endpoints.update(router.endpoints)
 
     def set_ws(self, ws: WebSocket) -> None:
         self.ws = ws
         self.ws.on_received = self.route
-
-    def include_router(self, router: Router) -> None:
-        self.endpoints.update(router.endpoints)
 
     def subscribe(self, event: str | Enum,
                   handler: Callable[..., Coroutine]) -> None:
@@ -35,11 +43,6 @@ class BrokerClient:
         subscribers.append(handler)
 
     def rpc(self, method: str | Enum) -> Callable:
-        """decorator to `subscribe` method
-
-        Args:
-            method (str | Enum): endpoint string
-        """
         def _subscriber(func: Callable[..., Coroutine]):
             self.subscribe(method, func)
             @wraps(func)
@@ -172,5 +175,6 @@ class BrokerClient:
             if exception:
                 logger.error(f'Got exception for {method}:\n'\
                              f'{exception}: {detailes}')
-                return None
+                if self.on_exception:
+                    self.on_exception(exception, detailes)
         return result
