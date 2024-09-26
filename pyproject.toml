@@ -10,6 +10,7 @@ python = "^3.11"
 loguru = "^0.7.2"
 websockets = "^13.0.1"
 pydantic = "^2.9.2"
+pyvalidate = {git = "https://github.com/CrinitusFeles/PyValidate"}
 
 
 [build-system]

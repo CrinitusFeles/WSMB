@@ -10,17 +10,31 @@ from wsmb.msg import Msg
 class Channel:
     def __init__(self, name: str) -> None:
         self.name: str = name
+        self.publishers = set()
         self.subscribers = set()
+
+    def pub_count(self) -> int:
+        return len(self.publishers)
+
+    def sub_count(self) -> int:
+        return len(self.subscribers)
+
+    def add_publisher(self, ws) -> None:
+        self.publishers.add(ws)
 
     def subscribe(self, ws) -> None:
         self.subscribers.add(ws)
+
+    async def to_publisher(self, msg: Msg) -> None:
+        for p in self.publishers:
+            await p.send_text(msg.model_dump_json())
 
     async def publish(self, msg: Msg) -> None:
         for s in self.subscribers:
             await s.send_text(msg.model_dump_json())
 
 
-INSPECTOR = Callable[[Msg], Awaitable[tuple[bool, Msg]]]
+INSPECTOR = Callable[..., Awaitable[tuple[bool, Msg]]]
 
 
 class BrokerServer:
@@ -47,6 +61,20 @@ class BrokerServer:
             return wrapper
         return _subscriber
 
+    def remove_ws(self, ws):
+        for ch in self.channels.values():
+            ch.subscribers.discard(ws)
+            ch.publishers.discard(ws)
+
+    def add_channel(self, name: str, ws) -> None:
+        ch: Channel | None = self.channels.get(name, None)
+        if ch is not None:
+            ch.add_publisher(ws)
+        else:
+            ch = Channel(name)
+            ch.add_publisher(ws)
+            self.channels.update({name: ch})
+
     def subscribe(self, name: str, ws) -> None:
         if self.client and name == self.client:
             raise ValueError('Channal\'s name must not be the same as the '\
@@ -55,18 +83,13 @@ class BrokerServer:
         if ch is not None:
             ch.subscribe(ws)
         else:
-            ch = Channel(name)
-            ch.subscribe(ws)
-            self.channels.update({name: ch})
+            logger.error(f'Channel {name} not exists')
 
     def unsubscribe(self, ch_name: str, ws) -> None:
         ch: Channel | None = self.channels.get(ch_name, None)
         if ch is None:
             raise ValueError('Channel not exists!')
-
         ch.subscribers.discard(ws)
-        if len(ch.subscribers) == 0:
-            self.channels.pop(ch_name)
 
     async def route(self, data: str, ws) -> None:
         msg: Msg | None = await self._parse_msg(data, ws)
@@ -77,24 +100,45 @@ class BrokerServer:
                 self.client.set_ws(ws)
                 await self.client.route(data)
                 return
-        publisher: Channel | None = self.channels.get(msg.src, None)
-        if not publisher:
-            raise ValueError('SRC not in channels')
-        if ws not in publisher.subscribers:
-            raise ValueError('Attempt to access of alien channel')
-        destination: Channel | None = self.channels.get(msg.dst, None)
+        sender: Channel | None = self.channels.get(msg.src, None)
+        if not sender:
+            answer: Msg = msg.exception('ValueError',
+                                        'SRC not in channels')
+            await ws.send_text(answer.model_dump_json())
+            return
+        if msg.dst == 'BROADCAST':
+            await sender.publish(msg)
+            return
+        # if ws not in sender.subscribers:
+        #     answer: Msg = msg.exception('ValueError',
+        #                                 'Attempt to access for alien channel')
+        #     await ws.send_text(answer.model_dump_json())
+        #     return
+
+        dst_ch: Channel | None = self.channels.get(msg.dst, None)
         if not msg.is_answer:
-            inspector: INSPECTOR | None = self._inspect_methods.get(msg.method, None)
+            inspector: INSPECTOR | None = self._inspect_methods.get(msg.method,
+                                                                    None)
             if inspector:
-                result, answer = await inspector(msg)
+                result, answer = await inspector(msg, ws)
                 if not result:
                     logger.debug(f'Inspector deny msg: {msg}')
                     await ws.send_text(answer.model_dump_json())
                     return
-        if destination:
-            await destination.publish(msg)
+
+        if not dst_ch:
+            logger.error(f'Destination {msg.dst} not found\n{msg}')
+            return
+        if msg.is_answer:
+            await dst_ch.publish(msg)
         else:
-            ...
+            if ws in dst_ch.subscribers:
+                await dst_ch.to_publisher(msg)
+            else:
+                answer = msg.exception('ValueError',
+                                        f'You not subscribed for channel {msg.dst}')
+                await ws.send_text(answer.model_dump_json())
+
 
     async def _parse_msg(self, data: str, ws) -> Msg | None:
         try:
@@ -109,5 +153,13 @@ class BrokerServer:
     def __str__(self) -> str:
         result = ''
         for ch_name, ch in self.channels.items():
-            result += f'{ch_name}:{len(ch.subscribers)}\n'
+            result += f'{ch_name}:\n\tpub: {ch.pub_count()}\n\t'\
+                      f'sub: {ch.sub_count()}\n'
+        return result
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        for ch_name, ch in self.channels.items():
+            result.update({ch_name: {'pub': ch.pub_count(),
+                                     'sub': ch.sub_count()}})
         return result

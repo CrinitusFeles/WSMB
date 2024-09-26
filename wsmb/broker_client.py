@@ -3,19 +3,25 @@ import asyncio
 from asyncio import Task
 from enum import Enum
 from functools import wraps, partial
-from typing import Any, Callable, Coroutine
+import json
+from typing import Any, Callable, Coroutine, get_type_hints
 from uuid import UUID
 from loguru import logger
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from wsmb.router import Router
 from wsmb.msg import Msg
 from wsmb.ws_client import WebSocket
+from pyvalidate import create_dyn_model
+from pyvalidate.validator import args_to_kwargs
+
+
+HANDLER = Callable[..., Coroutine | Any]
 
 
 class BrokerClient:
     def __init__(self) -> None:
         self.ws: WebSocket | None = None
-        self.endpoints: dict[str, list[Callable[..., Coroutine]]] = {}
+        self.endpoints: dict[str, list[HANDLER]] = {}
         self.name: str = ''
         self._waiting_tasks: dict[UUID, asyncio.Task] = {}
         self._tasks_result: dict[UUID, Any] = {}
@@ -36,14 +42,14 @@ class BrokerClient:
         self.ws.on_received = self.route
 
     def subscribe(self, event: str | Enum,
-                  handler: Callable[..., Coroutine]) -> None:
+                  handler: HANDLER) -> None:
         if isinstance(event, Enum):
             event = event.name
         subscribers: list = self.endpoints.setdefault(event, [])
         subscribers.append(handler)
 
     def rpc(self, method: str | Enum) -> Callable:
-        def _subscriber(func: Callable[..., Coroutine]):
+        def _subscriber(func: HANDLER):
             self.subscribe(method, func)
             @wraps(func)
             def wrapper(*args, **kwargs):
@@ -57,21 +63,36 @@ class BrokerClient:
         except ValidationError:
             logger.error(f'got incorrect message: {data}')
             return None
-        if msg.dst != self.name:
+        if msg.dst != self.name and msg.dst != 'BROADCAST':
             logger.error(f'Got msg with incorrect destination '\
-                         f'({msg.src}->{msg.dst} (expected: {self.name})\n{msg}')
+                         f'({msg.src}->{msg.dst} '\
+                         f'(expected: {self.name})\n{msg}')
             return None
         if msg.is_answer:
             self._handle_answer(msg)
             return None
-        handlers: list[Callable[..., Coroutine | Any]] = self.endpoints.get(msg.method, [])
+        handlers: list[HANDLER] = self.endpoints.get(msg.method, [])
         if len(handlers):
             for handler in handlers:
-                await self._exec_handler(handler, msg)
+                try:
+                    args_model: type[BaseModel] = create_dyn_model(handler)
+                    if isinstance(msg.data, tuple):
+                        msg.data = args_to_kwargs(handler, *msg.data)
+                    json_str: str = json.dumps(msg.data)
+                    args_dict = args_model.model_validate_json(json_str).__dict__
+                    msg.data = args_dict
+                    await self._exec_handler(handler, msg)
+                except ValidationError as err:
+                    details: str = err.json(include_url=False)
+                    logger.error(details)
+                    if msg.need_answer and self.on_exception:
+                        self.on_exception('ValidationError', details)
+                    return
+
         else:
             logger.warning(f'unsubscribed method: {data}')
 
-    def _handle_answer(self, msg: Msg):
+    def _handle_answer(self, msg: Msg) -> None:
         answer: Task | None = self._waiting_tasks.get(msg.msg_id, None)
         if not answer:
             logger.warning('Got answer but it\'s not in waiting list. '\
@@ -84,8 +105,7 @@ class BrokerClient:
         else:
             logger.error('Incorrect answer format! Answer data must be dict')
 
-    async def _exec_handler(self, handler: Callable[..., Coroutine],
-                            msg: Msg) -> None:
+    async def _exec_handler(self, handler: HANDLER, msg: Msg) -> None:
         if asyncio.iscoroutinefunction(handler):
             await self._execute_coroutine(handler, msg)
         else:
@@ -93,7 +113,7 @@ class BrokerClient:
             if answer_msg:
                 await self._send(answer_msg.model_dump_json())
 
-    def _execute_func(self, handler: Callable, msg: Msg) -> Msg | None:
+    def _execute_func(self, handler: HANDLER, msg: Msg) -> Msg | None:
         exception: str = ''
         exception_type: str = ''
         result: Any = None
@@ -105,7 +125,7 @@ class BrokerClient:
         except Exception as err:
             logger.error(err)
             exception = str(err)
-            exception_type = str(type(err))
+            exception_type = type(err).__name__
         if msg.need_answer:
             if exception:
                 answer = msg.exception(exception_type, exception)
@@ -113,8 +133,7 @@ class BrokerClient:
                 answer: Msg = msg.answer(result)
             return answer
 
-    async def _execute_coroutine(self, handler: Callable[..., Coroutine],
-                                 msg: Msg) -> None:
+    async def _execute_coroutine(self, handler: HANDLER, msg: Msg) -> None:
         if isinstance(msg.data, dict):
             task: Task = asyncio.create_task(handler(**msg.data),
                                              name=msg.model_dump_json())
@@ -135,6 +154,7 @@ class BrokerClient:
         if task.cancelled():
             answer = msg.exception('CancelledError', 'Task was cancelled')
         elif exception:
+            logger.error(f'Got exception for input msg: {msg}')
             answer = msg.exception(type(exception).__name__, str(exception))
         else:
             result: Any = task.result()
@@ -149,6 +169,9 @@ class BrokerClient:
                   need_answer=need_answer)
         await self._send(msg.model_dump_json())
         return msg
+
+    async def broadcast(self, method: str | Enum, data: dict | tuple):
+        return await self.publish('BROADCAST', method, data)
 
     async def _wait_message(self, msg_id: UUID, timeout: float) -> bool:
         task: Task = asyncio.create_task(asyncio.sleep(timeout))
@@ -170,11 +193,11 @@ class BrokerClient:
         self._tasks_result.pop(msg.msg_id)
         if result:
             exception: str = result.get('exception', None)
-            detailes: str = result.get('details', None)
+            details: str = result.get('details', None)
             result = result.get('answer', None)
             if exception:
                 logger.error(f'Got exception for {method}:\n'\
-                             f'{exception}: {detailes}')
+                             f'{exception}: {details}')
                 if self.on_exception:
-                    self.on_exception(exception, detailes)
+                    self.on_exception(exception, details)
         return result

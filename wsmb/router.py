@@ -28,6 +28,6 @@ class Router:
             self._subscribe(event, func)
             @wraps(func)
             def wrapper(*args, **kwargs):
-                func(*args, **kwargs)
+                return func(*args, **kwargs)
             return wrapper
         return _subscriber
