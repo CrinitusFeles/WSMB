@@ -9,11 +9,16 @@ router = Router()
 
 
 
-@router.subscribe('test_event')
+@router.subscribe('test_event', postrouter=lambda msg: print('event'))
 async def foo(self, v1: list[MyModel], v2: dict[str, list[int]], v3: str, v4: int):
-    await asyncio.sleep(0.1)
-    print(v1[0].model_dump(), v2, v3, v4)
+    await asyncio.sleep(1.5)
+    print('test_event', v1[0].model_dump(), v2, v3, v4, self._secret_field)
 
+
+@router.subscribe('test_event2', postrouter=lambda msg: print('event2'))
+async def foo2(self, v1: list[MyModel], v2: dict[str, list[int]], v3: str, v4: int):
+    await asyncio.sleep(2.5)
+    print('test_event2', v1[0].model_dump(), v2, v3, v4, self._secret_field)
 
 
 async def main():

@@ -4,24 +4,53 @@ from asyncio import Task
 from enum import Enum
 from functools import wraps, partial
 import json
-from typing import Any, Callable, Coroutine, get_type_hints
+from typing import Any, Callable
 from uuid import UUID
 from loguru import logger
 from pydantic import BaseModel, ValidationError
-from wsmb.router import Router
+from wsmb.router import HANDLER, Endpoint, Router
 from wsmb.msg import Msg
 from wsmb.ws_client import WebSocket
 from pyvalidate import create_dyn_model
 from pyvalidate.validator import args_to_kwargs
 
 
-HANDLER = Callable[..., Coroutine | Any]
+def execute_func(handler: HANDLER, msg: Msg) -> Msg | None:
+    exception: str = ''
+    exception_type: str = ''
+    result: Any = None
+    try:
+        if isinstance(msg.data, dict):
+            result = handler(**msg.data)
+        else:
+            result = handler(*msg.data)
+    except Exception as err:
+        logger.error(err)
+        exception = str(err)
+        exception_type = type(err).__name__
+    if msg.need_answer:
+        if exception:
+            answer = msg.exception(exception_type, exception)
+        else:
+            answer: Msg = msg.answer(result)
+        return answer
+
+
+async def execute_coroutine(handler: HANDLER, msg: Msg):
+    if isinstance(msg.data, dict):
+        task: Task = asyncio.create_task(handler(**msg.data),
+                                         name=msg.model_dump_json())
+    else:
+        task = asyncio.create_task(handler(*msg.data),
+                                   name=msg.model_dump_json())
+    return task
 
 
 class BrokerClient:
     def __init__(self) -> None:
         self.ws: WebSocket | None = None
-        self.endpoints: dict[str, list[HANDLER]] = {}
+        self.endpoints: dict[str, list[Endpoint]] = {}
+        self.postrouters: dict[str, HANDLER] = {}
         self.name: str = ''
         self._waiting_tasks: dict[UUID, asyncio.Task] = {}
         self._tasks_result: dict[UUID, Any] = {}
@@ -30,10 +59,12 @@ class BrokerClient:
     def include_router(self, router: Router, *args) -> None:
         if len(args) > 0:
             new_endpoints: dict = {}
-            for ep, handlers in router.endpoints.items():
-                new_handlers: list = [partial(handler, *args)
-                                      for handler in handlers]
-                new_endpoints.update({ep: new_handlers})
+            for ep_name, endpoints in router.endpoints.items():
+                new_handlers: list = [Endpoint(ep_name,
+                                               partial(ep.handler, *args),
+                                               ep.postroute)
+                                      for ep in endpoints]
+                new_endpoints.update({ep_name: new_handlers})
             router.endpoints = new_endpoints
         self.endpoints.update(router.endpoints)
 
@@ -41,16 +72,31 @@ class BrokerClient:
         self.ws = ws
         self.ws.on_received = self.route
 
-    def subscribe(self, event: str | Enum,
-                  handler: HANDLER) -> None:
+    def _postroute(self, event: str | Enum, handler: HANDLER):
         if isinstance(event, Enum):
             event = event.name
-        subscribers: list = self.endpoints.setdefault(event, [])
-        subscribers.append(handler)
+        self.postrouters.update({event: handler})
 
-    def rpc(self, method: str | Enum) -> Callable:
+    def postroute(self, method: str | Enum) -> Callable:
         def _subscriber(func: HANDLER):
-            self.subscribe(method, func)
+            self._postroute(method, func)
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                return func(*args, **kwargs)
+            return wrapper
+        return _subscriber
+
+    def subscribe(self, event: str | Enum, handler: HANDLER,
+                  postrouter: Callable | None = None) -> None:
+        if isinstance(event, Enum):
+            event = event.name
+        endpoints: list[Endpoint] = self.endpoints.setdefault(event, [])
+        endpoints.append(Endpoint(event, handler, postrouter))
+
+    def rpc(self, method: str | Enum,
+            postrouter: Callable | None = None) -> Callable:
+        def _subscriber(func: HANDLER):
+            self.subscribe(method, func, postrouter)
             @wraps(func)
             def wrapper(*args, **kwargs):
                 return func(*args, **kwargs)
@@ -71,26 +117,27 @@ class BrokerClient:
         if msg.is_answer:
             self._handle_answer(msg)
             return None
-        handlers: list[HANDLER] = self.endpoints.get(msg.method, [])
-        if len(handlers):
-            for handler in handlers:
-                try:
-                    args_model: type[BaseModel] = create_dyn_model(handler)
-                    if isinstance(msg.data, tuple):
-                        msg.data = args_to_kwargs(handler, *msg.data)
-                    json_str: str = json.dumps(msg.data)
-                    args_dict = args_model.model_validate_json(json_str).__dict__
-                    msg.data = args_dict
-                    await self._exec_handler(handler, msg)
-                except ValidationError as err:
-                    details: str = err.json(include_url=False)
-                    logger.error(details)
-                    if msg.need_answer and self.on_exception:
-                        self.on_exception('ValidationError', details)
-                    return
-
+        endpoints: list[Endpoint] = self.endpoints.get(msg.method, [])
+        if len(endpoints):
+            for endpoint in endpoints:
+                await self._validate_exec(endpoint, msg)
         else:
             logger.warning(f'unsubscribed method: {data}')
+
+    async def _validate_exec(self, endpoint: Endpoint, msg: Msg):
+        try:
+            args_model: type[BaseModel] = create_dyn_model(endpoint.handler)
+            if isinstance(msg.data, tuple):
+                msg.data = args_to_kwargs(endpoint.handler, *msg.data)
+            json_str: str = json.dumps(msg.data)
+            args_dict: dict = args_model.model_validate_json(json_str).__dict__
+            msg.data = args_dict
+            return await self._exec_handler(endpoint, msg)
+        except ValidationError as err:
+            details: str = err.json(include_url=False)
+            logger.error(details)
+            if msg.need_answer and self.on_exception:
+                self.on_exception('ValidationError', details)
 
     def _handle_answer(self, msg: Msg) -> None:
         answer: Task | None = self._waiting_tasks.get(msg.msg_id, None)
@@ -101,47 +148,24 @@ class BrokerClient:
         answer.cancel()
         self._waiting_tasks.pop(msg.msg_id)
         if isinstance(msg.data, dict):
-            self._tasks_result.update({msg.msg_id: msg.data})  # type: ignore
+            self._tasks_result.update({msg.msg_id: msg.data})
         else:
             logger.error('Incorrect answer format! Answer data must be dict')
 
-    async def _exec_handler(self, handler: HANDLER, msg: Msg) -> None:
-        if asyncio.iscoroutinefunction(handler):
-            await self._execute_coroutine(handler, msg)
+    async def _exec_handler(self, endpoint: Endpoint, msg: Msg):
+        if asyncio.iscoroutinefunction(endpoint.handler):
+            task: Task = await execute_coroutine(endpoint.handler, msg)
+            if msg.need_answer:
+                task.add_done_callback(self._task_done)
+                # await task
+                # answer_msg = self._task_done(task)
         else:
-            answer_msg: Msg | None = self._execute_func(handler, msg)
+            answer_msg: Msg | None = execute_func(endpoint.handler, msg)
             if answer_msg:
                 await self._send(answer_msg.model_dump_json())
-
-    def _execute_func(self, handler: HANDLER, msg: Msg) -> Msg | None:
-        exception: str = ''
-        exception_type: str = ''
-        result: Any = None
-        try:
-            if isinstance(msg.data, dict):
-                result = handler(**msg.data)
-            else:
-                result = handler(*msg.data)
-        except Exception as err:
-            logger.error(err)
-            exception = str(err)
-            exception_type = type(err).__name__
-        if msg.need_answer:
-            if exception:
-                answer = msg.exception(exception_type, exception)
-            else:
-                answer: Msg = msg.answer(result)
-            return answer
-
-    async def _execute_coroutine(self, handler: HANDLER, msg: Msg) -> None:
-        if isinstance(msg.data, dict):
-            task: Task = asyncio.create_task(handler(**msg.data),
-                                             name=msg.model_dump_json())
-        else:
-            task = asyncio.create_task(handler(*msg.data),
-                                        name=msg.model_dump_json())
-        if msg.need_answer:
-            task.add_done_callback(self._task_done)
+                postroute = self.postrouters.get(answer_msg.method, None)
+                if postroute:
+                        postroute(answer_msg)
 
     async def _send(self, data: str) -> None:
         if not self.ws:
@@ -160,6 +184,9 @@ class BrokerClient:
             result: Any = task.result()
             answer: Msg = msg.answer(result)
         asyncio.create_task(self._send(answer.model_dump_json()))
+        postroute = self.postrouters.get(answer.method)
+        if postroute:
+            postroute(answer)
 
     async def publish(self, dst: str, method: str | Enum, data: dict | tuple,
                       need_answer: bool = False) -> Msg:
