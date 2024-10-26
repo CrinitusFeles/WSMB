@@ -165,11 +165,12 @@ class BrokerClient:
                 await self._send(answer_msg.model_dump_json())
                 postroute = self.postrouters.get(answer_msg.method, None)
                 if postroute:
-                        postroute(answer_msg)
+                    postroute(answer_msg)
 
     async def _send(self, data: str) -> None:
         if not self.ws:
-            raise RuntimeError('WS Client not defined')
+            raise RuntimeError(f'Trying to send next data: {data}\n'\
+                               f' but WS Client not defined')
         await self.ws.send_text(data)
 
     def _task_done(self, task: Task) -> None:
