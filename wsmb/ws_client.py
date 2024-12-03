@@ -96,6 +96,7 @@ class WebSocket:
             ping_interval=20,
             ping_timeout=3,
             close_timeout=3,
+            max_size=2**27,
             extra_headers=headers,
             host=self._wsuri.host,
             port=self._wsuri.port,
