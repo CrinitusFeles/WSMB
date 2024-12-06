@@ -78,8 +78,9 @@ class WebSocket:
                 logger.error('Connection timeout')
                 if self.on_error:
                     await self.on_error(TimeoutError('Connection timeout'))
-            except ConnectionRefusedError as err:
+            except (ConnectionRefusedError, ConnectionResetError) as err:
                 logger.error(err)
+                await asyncio.sleep(1)
 
     async def _connect(self, uri: str, headers: dict | None ) -> bool:
         self._uri: str = uri
