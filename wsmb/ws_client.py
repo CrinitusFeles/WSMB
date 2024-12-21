@@ -77,6 +77,15 @@ class WebSocket:
         uri = uri.replace('https', 'wss').replace('http', 'ws') + self.endpoint
         if self.token:
             uri += f'?token={self.token}'
+        if self.connection_status:
+            logger.warning(f'WSClient already connected to '\
+                           f'{self._last_connection_data[0]}')
+            if self._last_connection_data[0] == uri:
+                return True
+            else:
+                logger.warning('For connecting to another url use '\
+                               '`disconnect` method first')
+                return False
         while counter < self.connect_retries:
             counter += 1
             logger.debug(f'Trying to connect to {uri} (try {counter})')
