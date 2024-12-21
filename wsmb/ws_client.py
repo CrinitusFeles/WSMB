@@ -19,7 +19,7 @@ class AuthorizationError(Exception):
 
 class WebSocket:
     def __init__(self) -> None:
-        self.received: Event = Event(str, bytes)
+        self.received: Event = Event(str | bytes)
         self.connected: Event = Event()
         self.disconnected: Event = Event()
         self.error: Event = Event(Exception)
