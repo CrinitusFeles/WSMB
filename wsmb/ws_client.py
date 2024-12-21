@@ -25,7 +25,7 @@ class WebSocket:
         self.error: Event = Event(Exception)
         self.critical_error: Event = Event()
         self.on_token_error: Callable[..., Awaitable] | None = None
-        self._last_connection_data: tuple = ()
+        self._last_connection_data: str = ''
         self.read_task: asyncio.Task | None = None
         self.connection_status: bool = False
         self._uri: str = ''
@@ -168,7 +168,7 @@ class WebSocket:
         self.read_task = self._loop.create_task(self._read_routine())
         self.read_task.add_done_callback(self._read_done_callback)
         self.connected.emit()
-        self._last_connection_data = (uri, self.headers)
+        self._last_connection_data = uri
         self.connection_status = True
         return True
 
@@ -206,7 +206,7 @@ class WebSocket:
                 logger.error('Connection was never established')
                 return
             await self.disconnect()
-            await self.connect(*self._last_connection_data)
+            await self.connect(self._last_connection_data)
 
     async def send(self, data: str | bytes) -> None:
         await self._protocol.send(data)
