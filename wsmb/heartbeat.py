@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import httpx
 from httpx import Response, ConnectTimeout
 from loguru import logger
+from event import Event
 
 from wsmb.ws_client import WebSocket
 
@@ -38,10 +39,10 @@ async def check_connection(url: str) -> bool:
 class HeartBeatWorker:
     def __init__(self, url_list: list[str]) -> None:
         # self.servers = sorted(servers, key=lambda x: x.priority, reverse=True)
+        self.reconnected: Event = Event(str)
         self.servers: list[ServerData] = [ServerData(url) for url in url_list]
         self.period_sec = 60
         self.connect_retries = 5
-        self.ws_endpoint: str = '/ws'
 
     async def routine(self) -> None:
         try:
@@ -74,17 +75,13 @@ class HeartBeatWorker:
     async def _make_connection(self) -> None:
         for server in self.servers:
             if server.isOnline:
-                connection_status: bool = await self._connect(server.url)
+                connection_status: bool = await self.connect(server.url)
                 server.connected = connection_status
                 if connection_status:
+                    self.reconnected.emit(server.url)
                     break
 
-    async def _connect(self, url: str) -> bool:
-        uri: str = url.replace('https', 'wss')\
-                      .replace('http', 'ws') + self.ws_endpoint
-        return await self.connect(uri, None)
-
-    async def connect(self, uri: str, headers: dict | None) -> bool:
+    async def connect(self, uri: str, headers: dict | None = None) -> bool:
         raise NotImplementedError
 
     async def disconnect(self, manual: bool) -> None:
@@ -97,21 +94,19 @@ class HeartBeatWorker:
         for server in self.servers:
             server.connected = False
 
-    def set_ws(self, ws: WebSocket, endpoint: str = '') -> None:
+    def set_ws(self, ws: WebSocket) -> None:
         self.connect = ws.connect
         self.disconnect = ws.disconnect
         ws.connect_retries = self.connect_retries
         ws.disconnected.subscribe(worker.on_disconnect)
-        if endpoint:
-            self.ws_endpoint = endpoint
 
 
 if __name__ == '__main__':
-    ws = WebSocket()
+    ws = WebSocket('/ws/gs')
     worker = HeartBeatWorker([
         'http://localhost:33300',
         'http://localhost:33321',
         'http://84.237.52.8:33011',
     ])
-    worker.set_ws(ws, '/ws/gs')
+    worker.set_ws(ws)
     asyncio.run(worker.routine())
