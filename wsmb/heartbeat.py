@@ -43,6 +43,7 @@ class HeartBeatWorker:
         self.servers: list[ServerData] = [ServerData(url) for url in url_list]
         self.period_sec = 60
         self.connect_retries = 5
+        self._ws: WebSocket | None = None
 
     async def routine(self) -> None:
         try:
@@ -61,8 +62,10 @@ class HeartBeatWorker:
     def _is_main_ready(self) -> bool:
         return self.servers[0].isOnline and not self.servers[0].connected
 
-    def _is_connected(self) -> int:
-        return sum([server.connected for server in self.servers])
+    def _is_connected(self) -> bool:
+        ws_connected: bool = self._ws is not None and self._ws.connection_status
+        return bool(sum([server.connected
+                         for server in self.servers])) or ws_connected
 
     async def _check_online(self) -> None:
         if not self.servers[0].connected:  # not connected to main server
@@ -95,13 +98,14 @@ class HeartBeatWorker:
             server.connected = False
 
     def set_ws(self, ws: WebSocket) -> None:
+        self._ws = ws
         self.connect = ws.connect
         self.disconnect = ws.disconnect
         ws.connect_retries = self.connect_retries
-        ws.disconnected.subscribe(worker.on_disconnect)
+        ws.disconnected.subscribe(self.on_disconnect)
 
 
-if __name__ == '__main__':
+async def test():
     ws = WebSocket('/ws/gs', {'label': 'TEST_GS'})
     worker = HeartBeatWorker([
         'http://localhost:33011',
@@ -111,4 +115,9 @@ if __name__ == '__main__':
     worker.period_sec = 15
     worker.reconnected.subscribe(lambda url: print(f'reconnected to {url}'))
     worker.set_ws(ws)
-    asyncio.run(worker.routine())
+    await ws.connect('http://84.237.52.8:33011')
+    await worker.routine()
+
+
+if __name__ == '__main__':
+    asyncio.run(test())
