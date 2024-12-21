@@ -30,6 +30,7 @@ class WebSocket:
         self.connection_status: bool = False
         self._uri: str = ''
         self.connect_retries = 9999999
+        self.token: str = ''
 
 
     def handle_redirect(self, uri: str) -> None:
@@ -71,6 +72,8 @@ class WebSocket:
 
     async def connect(self, uri: str, headers: dict | None = None) -> bool:
         counter: int = 0
+        if self.token:
+            uri += f'?token={self.token}'
         while counter < self.connect_retries:
             counter += 1
             logger.debug(f'Trying to connect to {uri} (try {counter})')
