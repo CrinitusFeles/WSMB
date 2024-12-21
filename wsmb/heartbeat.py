@@ -41,7 +41,7 @@ class HeartBeatWorker:
         self.servers: list[ServerData] = [ServerData(url) for url in url_list]
         self.period_sec = 60
         self.connect_retries = 5
-        self.ws_endpoint: str = '/ws/gs'
+        self.ws_endpoint: str = '/ws'
 
     async def routine(self) -> None:
         try:
@@ -82,7 +82,7 @@ class HeartBeatWorker:
     async def _connect(self, url: str) -> bool:
         uri: str = url.replace('https', 'wss')\
                       .replace('http', 'ws') + self.ws_endpoint
-        return await self.connect(uri, {'label': 'Test_GS'})
+        return await self.connect(uri, None)
 
     async def connect(self, uri: str, headers: dict | None) -> bool:
         raise NotImplementedError
@@ -97,11 +97,13 @@ class HeartBeatWorker:
         for server in self.servers:
             server.connected = False
 
-    def set_ws(self, ws: WebSocket) -> None:
+    def set_ws(self, ws: WebSocket, endpoint: str = '') -> None:
         self.connect = ws.connect
         self.disconnect = ws.disconnect
         ws.connect_retries = self.connect_retries
         ws.disconnected.subscribe(worker.on_disconnect)
+        if endpoint:
+            self.ws_endpoint = endpoint
 
 
 if __name__ == '__main__':
@@ -111,5 +113,5 @@ if __name__ == '__main__':
         'http://localhost:33321',
         'http://84.237.52.8:33011',
     ])
-    worker.set_ws(ws)
+    worker.set_ws(ws, '/ws/gs')
     asyncio.run(worker.routine())
