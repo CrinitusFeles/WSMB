@@ -102,11 +102,13 @@ class HeartBeatWorker:
 
 
 if __name__ == '__main__':
-    ws = WebSocket('/ws/gs')
+    ws = WebSocket('/ws/gs', {'label': 'TEST_GS'})
     worker = HeartBeatWorker([
-        'http://localhost:33300',
+        'http://localhost:33011',
         'http://localhost:33321',
         'http://84.237.52.8:33011',
     ])
+    worker.period_sec = 15
+    worker.reconnected.subscribe(lambda url: print(f'reconnected to {url}'))
     worker.set_ws(ws)
     asyncio.run(worker.routine())

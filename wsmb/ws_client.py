@@ -18,7 +18,7 @@ class AuthorizationError(Exception):
 
 
 class WebSocket:
-    def __init__(self, endpoint: str = '') -> None:
+    def __init__(self, endpoint: str = '', headers: dict | None = None) -> None:
         self.received: Event = Event(str | bytes)
         self.connected: Event = Event()
         self.disconnected: Event = Event()
@@ -32,7 +32,7 @@ class WebSocket:
         self.connect_retries = 9999999
         self.token: str = ''
         self.endpoint: str = endpoint
-        self.headers: dict = {}
+        self.headers: dict = headers or {}
 
 
     def handle_redirect(self, uri: str) -> None:
