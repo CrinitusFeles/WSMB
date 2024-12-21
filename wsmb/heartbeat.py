@@ -81,7 +81,7 @@ class HeartBeatWorker:
                     self.reconnected.emit(server.url)
                     break
 
-    async def connect(self, uri: str, headers: dict | None = None) -> bool:
+    async def connect(self, uri: str) -> bool:
         raise NotImplementedError
 
     async def disconnect(self, manual: bool) -> None:

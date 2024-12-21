@@ -32,6 +32,7 @@ class WebSocket:
         self.connect_retries = 9999999
         self.token: str = ''
         self.endpoint: str = endpoint
+        self.headers: dict = {}
 
 
     def handle_redirect(self, uri: str) -> None:
@@ -71,7 +72,7 @@ class WebSocket:
         self._uri = new_uri
         self._wsuri = new_wsuri
 
-    async def connect(self, uri: str, headers: dict | None = None) -> bool:
+    async def connect(self, uri: str) -> bool:
         counter: int = 0
         uri = uri.replace('https', 'wss').replace('http', 'ws') + self.endpoint
         if self.token:
@@ -81,7 +82,7 @@ class WebSocket:
             logger.debug(f'Trying to connect to {uri} (try {counter})')
             try:
                 async with timeout(5):
-                    if await self._connect(uri, headers):
+                    if await self._connect(uri):
                         return True
             except TimeoutError:
                 logger.error('Connection timeout')
@@ -92,7 +93,7 @@ class WebSocket:
         logger.debug('Connect retries finished')
         return False
 
-    async def _connect(self, uri: str, headers: dict | None ) -> bool:
+    async def _connect(self, uri: str) -> bool:
         self._uri: str = uri
         self._wsuri: WebSocketURI = parse_uri(self._uri)
 
@@ -108,7 +109,7 @@ class WebSocket:
             ping_timeout=3,
             close_timeout=3,
             max_size=2**27,
-            extra_headers=headers,
+            extra_headers=self.headers,
             host=self._wsuri.host,
             port=self._wsuri.port,
             secure=self._wsuri.secure,
@@ -159,7 +160,7 @@ class WebSocket:
         self.read_task = self._loop.create_task(self._read_routine())
         self.read_task.add_done_callback(self._read_done_callback)
         self.connected.emit()
-        self._last_connection_data = (uri, headers)
+        self._last_connection_data = (uri, self.headers)
         self.connection_status = True
         return True
 
