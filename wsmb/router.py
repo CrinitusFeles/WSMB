@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial, wraps
-from typing import Any, Callable, Coroutine, Type
+from typing import Any, Callable, Coroutine
 
 
 HANDLER = Callable[..., Coroutine | Any] | partial
