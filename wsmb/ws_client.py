@@ -1,12 +1,13 @@
 import asyncio
 from functools import partial
-from typing import Callable, Coroutine
+from typing import Awaitable, Callable
 from loguru import logger
 import websockets
 from websockets.asyncio.async_timeout import timeout
 from websockets.uri import parse_uri, WebSocketURI
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
 import urllib.parse
+from event import Event
 
 
 compress = ClientPerMessageDeflateFactory(compress_settings={"memLevel": 5})
@@ -18,16 +19,17 @@ class AuthorizationError(Exception):
 
 class WebSocket:
     def __init__(self) -> None:
-        self.on_received: Callable[..., Coroutine] | None = None
-        self.on_connected: Callable[..., Coroutine] | None = None
-        self.on_disconnected: Callable[..., Coroutine] | None = None
-        self.on_error: Callable[..., Coroutine] | None = None
-        self.on_token_error: Callable[..., Coroutine] | None = None
-        self.on_critical_error: Callable[..., Coroutine] | None = None
+        self.received: Event = Event(str, bytes)
+        self.connected: Event = Event()
+        self.disconnected: Event = Event()
+        self.error: Event = Event(Exception)
+        self.critical_error: Event = Event()
+        self.on_token_error: Callable[..., Awaitable] | None = None
         self._last_connection_data: tuple = ()
         self.read_task: asyncio.Task | None = None
         self.connection_status: bool = False
         self._uri: str = ''
+        self.connect_retries = 9999999
 
 
     def handle_redirect(self, uri: str) -> None:
@@ -41,9 +43,8 @@ class WebSocket:
         if old_wsuri.secure and not new_wsuri.secure:
             raise websockets.SecurityError("redirect from WSS to WS")
 
-        same_origin = (
-            old_wsuri.host == new_wsuri.host and old_wsuri.port == new_wsuri.port
-        )
+        same_origin = (old_wsuri.host == new_wsuri.host and
+                             old_wsuri.port == new_wsuri.port)
 
         # Rewrite the host and port arguments for cross-origin redirects.
         # This preserves connection overrides with the host and port
@@ -68,19 +69,23 @@ class WebSocket:
         self._uri = new_uri
         self._wsuri = new_wsuri
 
-    async def connect(self, uri: str, headers: dict | None = None):
-        while True:
+    async def connect(self, uri: str, headers: dict | None = None) -> bool:
+        counter: int = 0
+        while counter < self.connect_retries:
+            counter += 1
+            logger.debug(f'Trying to connect to {uri} (try {counter})')
             try:
                 async with timeout(5):
                     if await self._connect(uri, headers):
-                        break
+                        return True
             except TimeoutError:
                 logger.error('Connection timeout')
-                if self.on_error:
-                    await self.on_error(TimeoutError('Connection timeout'))
+                self.error.emit(TimeoutError('Connection timeout'))
             except (ConnectionRefusedError, ConnectionResetError) as err:
                 logger.error(err)
                 await asyncio.sleep(1)
+        logger.debug('Connect retries finished')
+        return False
 
     async def _connect(self, uri: str, headers: dict | None ) -> bool:
         self._uri: str = uri
@@ -139,19 +144,16 @@ class WebSocket:
                                 logger.error('Can not refresh token')
                         except TimeoutError:
                             logger.error('Timeout of refresh token request')
-                        if self.on_critical_error:
-                            await self.on_critical_error()
+                        self.critical_error.emit()
                         raise AuthorizationError
-            if self.on_error:
-                await self.on_error(err)
+            self.error.emit(err)
             return False
 
         self._protocol = protocol
         logger.success(f'Connected to {self._uri}')
         self.read_task = self._loop.create_task(self._read_routine())
         self.read_task.add_done_callback(self._read_done_callback)
-        if self.on_connected:
-            await self.on_connected()
+        self.connected.emit()
         self._last_connection_data = (uri, headers)
         self.connection_status = True
         return True
@@ -178,14 +180,13 @@ class WebSocket:
                 self.read_task.cancel()
                 self.read_task = None
             await self._protocol.close(reason=reason)
+            self.disconnected.emit()
             logger.debug(f'Disconnected from {self._uri}')
         else:
             logger.warning('WS client was not connected')
 
     async def reconnect(self):
         if self.connection_status:
-            if self.on_disconnected:
-                await self.on_disconnected()
             logger.debug('Trying to reconnect')
             if not self._last_connection_data:
                 logger.error('Connection was never established')
@@ -207,11 +208,9 @@ class WebSocket:
             while True:
                 data = await self._protocol.recv()
                 logger.debug(f'Received: {data}')
-                if self.on_received:
-                    await self.on_received(data)
+                self.received.emit(data)
         except websockets.exceptions.ConnectionClosedError as err:
             logger.error(f'Lost connection with server: {err}')
-            if self.on_error:
-                await self.on_error(err)
+            self.error.emit(err)
         except websockets.exceptions.ConnectionClosedOK as exc:
             logger.debug(exc)

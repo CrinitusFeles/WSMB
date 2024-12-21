@@ -70,7 +70,7 @@ class BrokerClient:
 
     def set_ws(self, ws: WebSocket) -> None:
         self.ws = ws
-        self.ws.on_received = self.route
+        self.ws.received.subscribe(self.route)
 
     def _postroute(self, event: str | Enum, handler: HANDLER):
         if isinstance(event, Enum):
