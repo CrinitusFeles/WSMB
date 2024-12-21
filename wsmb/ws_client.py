@@ -34,7 +34,6 @@ class WebSocket:
         self.endpoint: str = endpoint
         self.headers: dict = headers or {}
 
-
     def handle_redirect(self, uri: str) -> None:
         # Update the state of this instance to connect to a new URI.
         old_uri = self._uri
@@ -229,3 +228,6 @@ class WebSocket:
             self.error.emit(err)
         except websockets.exceptions.ConnectionClosedOK as exc:
             logger.debug(exc)
+
+    def set_token(self, token: str):
+        self.token = token
