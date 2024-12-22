@@ -1,6 +1,7 @@
 
 import asyncio
 from dataclasses import dataclass
+from typing import Coroutine
 import httpx
 from httpx import Response, ConnectTimeout
 from loguru import logger
@@ -42,12 +43,13 @@ class HeartBeatWorker:
         self.reconnected: Event = Event(str)
         self.servers: list[ServerData] = [ServerData(url) for url in url_list]
         self.period_sec = 60
-        self.connect_retries = 5
+        self.connect_retries = 3
         self._ws: WebSocket | None = None
+        self._sleep_task: asyncio.Task | None = None
 
     async def routine(self) -> None:
-        try:
-            while True:
+        while True:
+            try:
                 await self._check_online()
                 if self._is_main_ready():
                     if self._is_connected():
@@ -55,9 +57,18 @@ class HeartBeatWorker:
                         await asyncio.sleep(1)
                 if not self._is_connected():
                     await self._make_connection()
-                await asyncio.sleep(self.period_sec)
-        except asyncio.CancelledError:
-            await self.disconnect(True)
+                if self._is_connected():
+                    coro: Coroutine = asyncio.sleep(self.period_sec)
+                    self._sleep_task = asyncio.create_task(coro)
+                    try:
+                        await self._sleep_task
+                    except asyncio.CancelledError:
+                        ...
+            except asyncio.CancelledError:
+                await self.disconnect(True)
+                return
+            except Exception as err:
+                logger.error(err)
 
     def _is_main_ready(self) -> bool:
         return self.servers[0].isOnline and not self.servers[0].connected
@@ -69,7 +80,8 @@ class HeartBeatWorker:
 
     async def _check_online(self) -> None:
         if not self.servers[0].connected:  # not connected to main server
-            task_list: list = [self._check(url) for url in self.servers]
+            task_list: list = [check_connection(server.url)
+                               for server in self.servers]
             result: list[bool] = await asyncio.gather(*task_list)
             for server, r in zip(self.servers, result):
                 server.isOnline = r
@@ -78,10 +90,10 @@ class HeartBeatWorker:
     async def _make_connection(self) -> None:
         for server in self.servers:
             if server.isOnline:
+                self.reconnected.emit(server.url)
                 connection_status: bool = await self.connect(server.url)
                 server.connected = connection_status
                 if connection_status:
-                    self.reconnected.emit(server.url)
                     break
 
     async def connect(self, uri: str) -> bool:
@@ -90,12 +102,15 @@ class HeartBeatWorker:
     async def disconnect(self, manual: bool) -> None:
         raise NotImplementedError
 
-    async def _check(self, url: ServerData) -> bool:
-        return await check_connection(url.url)
-
     async def on_disconnect(self) -> None:
-        for server in self.servers:
-            server.connected = False
+        if self._sleep_task:
+            await self._check_online()
+            if not self._is_main_ready():
+                await asyncio.sleep(15)
+            if self._ws and not self._ws.connection_status:
+                for server in self.servers:
+                    server.connected = False
+                self._sleep_task.cancel()
 
     def set_ws(self, ws: WebSocket) -> None:
         self._ws = ws
