@@ -73,9 +73,12 @@ class WebSocket:
 
     async def connect(self, uri: str) -> bool:
         counter: int = 0
-        uri = uri.replace('https', 'wss').replace('http', 'ws') + self.endpoint
-        if self.token:
-            uri += f'?token={self.token}'
+        if not uri:
+            uri = self._last_connection_data
+        else:
+            uri = uri.replace('https', 'wss').replace('http', 'ws') + self.endpoint
+            if self.token:
+                uri += f'?token={self.token}'
         if self.connection_status:
             logger.warning(f'WSClient already connected to '\
                            f'{self._last_connection_data[0]}')
@@ -206,7 +209,7 @@ class WebSocket:
                 logger.error('Connection was never established')
                 return
             await self.disconnect()
-            await self.connect(self._last_connection_data)
+            await self.connect('')
 
     async def send(self, data: str | bytes) -> None:
         await self._protocol.send(data)
