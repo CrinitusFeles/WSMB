@@ -60,6 +60,7 @@ class HeartBeatWorker:
                 if self._is_connected():
                     coro: Coroutine = asyncio.sleep(self.period_sec)
                     self._sleep_task = asyncio.create_task(coro)
+                    await asyncio.sleep(0.001)
                     try:
                         await self._sleep_task
                     except asyncio.CancelledError:
