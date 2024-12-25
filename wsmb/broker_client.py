@@ -1,6 +1,7 @@
 
 import asyncio
-from asyncio import Task
+from asyncio import CancelledError, Task
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from functools import wraps, partial
 import json
@@ -55,6 +56,21 @@ class BrokerClient:
         self._waiting_tasks: dict[UUID, asyncio.Task] = {}
         self._tasks_result: dict[UUID, Any] = {}
         self.on_exception: Callable[[str, str], None] | None = None
+        self._incoming: dict[Msg, tuple[WebSocket, datetime]] = {}
+
+    async def garbage_collector(self) -> None:
+        try:
+            logger.debug('Start WSMB garbage collector')
+            while True:
+                await asyncio.sleep(5)
+                now: datetime = datetime.now(UTC)
+                for msg, (_, dt) in list(self._incoming.items()):
+                    if dt + timedelta(seconds=10) < now:
+                        self._incoming.pop(msg)
+                        logger.warning(f'WSMB garbage collector removed msg: '\
+                                       f'{msg}')
+        except CancelledError:
+            logger.debug('Closed WSMB garbage collector')
 
     def include_router(self, router: Router, *args) -> None:
         if len(args) > 0:
@@ -70,7 +86,8 @@ class BrokerClient:
 
     def set_ws(self, ws: WebSocket) -> None:
         self.ws = ws
-        self.ws.received.subscribe(self.route)
+        if hasattr(self.ws, 'received'):
+            self.ws.received.subscribe(self.route)
 
     def _postroute(self, event: str | Enum, handler: HANDLER):
         if isinstance(event, Enum):
@@ -103,7 +120,7 @@ class BrokerClient:
             return wrapper
         return _subscriber
 
-    async def route(self, data: str) -> None:
+    async def route(self, data: str, ws: WebSocket | None = None) -> None:
         try:
             msg: Msg = Msg.model_validate_json(data)
         except ValidationError:
@@ -118,7 +135,12 @@ class BrokerClient:
             self._handle_answer(msg)
             return None
         endpoints: list[Endpoint] = self.endpoints.get(msg.method, [])
+        if not ws:
+            ws = self.ws
+            if not ws:
+                raise ValueError('WebSocket not defined')
         if len(endpoints):
+            self._incoming.update({msg: (ws, datetime.now(UTC))})
             for endpoint in endpoints:
                 await self._validate_exec(endpoint, msg)
         else:
@@ -184,6 +206,7 @@ class BrokerClient:
         else:
             result: Any = task.result()
             answer: Msg = msg.answer(result)
+        self.ws, _ = self._incoming.pop(answer)
         asyncio.create_task(self._send(answer.model_dump_json()))
         postroute = self.postrouters.get(answer.method)
         if postroute:

@@ -33,3 +33,9 @@ class Msg(BaseModel):
                    is_answer=True,
                    msg_id=self.msg_id)
                 #    ws=self.ws)
+
+    def __hash__(self) -> int:
+        return self.msg_id.__hash__()
+
+    def __eq__(self, other) -> bool:
+        return self.msg_id.__eq__(other.msg_id)

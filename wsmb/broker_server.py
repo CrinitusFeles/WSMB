@@ -98,7 +98,7 @@ class BrokerServer:
         if self.client:
             if msg.dst == self.client.name:
                 self.client.set_ws(ws)
-                await self.client.route(data)
+                await self.client.route(data, ws)
                 return
         sender: Channel | None = self.channels.get(msg.src, None)
         if not sender:
