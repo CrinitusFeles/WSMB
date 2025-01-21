@@ -163,7 +163,8 @@ class WebSocket:
                             logger.error('Timeout of refresh token request')
                         self.critical_error.emit()
                         raise AuthorizationError
-            self.error.emit(err)
+            if isinstance(err, Exception):
+                self.error.emit(err)
             return False
 
         self._protocol = protocol
