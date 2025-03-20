@@ -159,6 +159,8 @@ class WebSocket:
                             response = await self.on_token_error()
                             if response.status_code != 200:
                                 logger.error('Can not refresh token')
+                            if response.status_code == 403:
+                                return False
                         except TimeoutError:
                             logger.error('Timeout of refresh token request')
                         self.critical_error.emit()
