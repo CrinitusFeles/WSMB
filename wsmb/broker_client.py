@@ -16,7 +16,7 @@ from pyvalidate import create_dyn_model
 from pyvalidate.validator import args_to_kwargs
 
 
-def execute_func(handler: HANDLER, msg: Msg) -> Msg | None:
+def execute_func(handler: HANDLER, msg: Msg) -> Msg:
     exception: str = ''
     exception_type: str = ''
     result: Any = None
@@ -29,12 +29,11 @@ def execute_func(handler: HANDLER, msg: Msg) -> Msg | None:
         logger.error(err)
         exception = str(err)
         exception_type = type(err).__name__
-    if msg.need_answer:
-        if exception:
-            answer = msg.exception(exception_type, exception)
-        else:
-            answer: Msg = msg.answer(result)
-        return answer
+    if exception:
+        answer = msg.exception(exception_type, exception)
+    else:
+        answer: Msg = msg.answer(result)
+    return answer
 
 
 async def execute_coroutine(handler: HANDLER, msg: Msg):
@@ -182,8 +181,9 @@ class BrokerClient:
                 # await task
                 # answer_msg = self._task_done(task)
         else:
-            answer_msg: Msg | None = execute_func(endpoint.handler, msg)
-            if answer_msg:
+            answer_msg: Msg = execute_func(endpoint.handler, msg)
+            if msg.need_answer:
+                self.ws, _ = self._incoming.pop(answer_msg)
                 await self._send(answer_msg.model_dump_json())
                 postroute = self.postrouters.get(answer_msg.method, None)
                 if postroute:
