@@ -101,6 +101,9 @@ class WebSocket:
             except (ConnectionRefusedError, ConnectionResetError) as err:
                 logger.error(err)
                 await asyncio.sleep(1)
+            except AuthorizationError:
+                logger.error('Authorization error!')
+                return False
         logger.debug('Connect retries finished')
         return False
 
