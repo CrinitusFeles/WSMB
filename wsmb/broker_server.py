@@ -62,9 +62,14 @@ class BrokerServer:
         return _subscriber
 
     def remove_ws(self, ws):
+        to_delete: dict = {}
         for ch in self.channels.values():
             ch.subscribers.discard(ws)
             ch.publishers.discard(ws)
+            if len(ch.subscribers) == 0 and len(ch.publishers) == 0:
+                to_delete.update({ch.name: ch})
+        for ch_name in to_delete.values():
+            self.channels.pop(ch_name.name)
 
     def add_channel(self, name: str, ws) -> None:
         ch: Channel | None = self.channels.get(name, None)
