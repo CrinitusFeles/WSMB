@@ -80,8 +80,13 @@ class BrokerClient:
                                                ep.postroute)
                                       for ep in endpoints]
                 new_endpoints.update({ep_name: new_handlers})
+
             router.endpoints = new_endpoints
-        self.endpoints.update(router.endpoints)
+        for ep_name, endpoints in router.endpoints.items():
+            if ep_name in self.endpoints.keys():
+                self.endpoints[ep_name].extend(endpoints)
+            else:
+                self.endpoints.update({ep_name: endpoints})
 
     def set_ws(self, ws: WebSocket) -> None:
         self.ws = ws
