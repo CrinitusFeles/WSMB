@@ -1,5 +1,6 @@
 import asyncio
 from functools import partial
+import socket
 from typing import Awaitable, Callable
 from loguru import logger
 import websockets
@@ -98,7 +99,7 @@ class WebSocket:
             except TimeoutError:
                 logger.error('Connection timeout')
                 self.error.emit(TimeoutError('Connection timeout'))
-            except (ConnectionRefusedError, ConnectionResetError) as err:
+            except (ConnectionRefusedError, ConnectionResetError, socket.gaierror) as err:
                 logger.error(err)
                 await asyncio.sleep(1)
             except AuthorizationError:
@@ -122,7 +123,7 @@ class WebSocket:
             ping_interval=20,
             ping_timeout=3,
             close_timeout=3,
-            max_size=2**27,
+            max_size=2**40,
             extra_headers=self.headers,
             host=self._wsuri.host,
             port=self._wsuri.port,
