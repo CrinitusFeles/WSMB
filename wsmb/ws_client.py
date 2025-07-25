@@ -5,6 +5,8 @@ from typing import Awaitable, Callable
 from loguru import logger
 import websockets
 from websockets.asyncio.async_timeout import timeout
+from websockets.legacy.exceptions import RedirectHandshake
+from websockets.legacy.client import WebSocketClientProtocol
 from websockets.uri import parse_uri, WebSocketURI
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
 import urllib.parse
@@ -118,7 +120,7 @@ class WebSocket:
         if kwargs.get("ssl"):
             kwargs.setdefault("server_hostname", self._wsuri.host)
         self.factory = partial(
-            websockets.WebSocketClientProtocol,
+            WebSocketClientProtocol,
             extensions=[compress],
             ping_interval=20,
             ping_timeout=3,
@@ -131,7 +133,7 @@ class WebSocket:
             **kwargs
         )
 
-        self._protocol: websockets.WebSocketClientProtocol
+        self._protocol: WebSocketClientProtocol
         self._loop = asyncio.get_event_loop()
         self._create_connection = partial(self._loop.create_connection,
                                           self.factory,
@@ -146,7 +148,7 @@ class WebSocket:
                 available_subprotocols=protocol.available_subprotocols,
                 extra_headers=protocol.extra_headers,
             )
-        except websockets.RedirectHandshake as exc:
+        except RedirectHandshake as exc:
             logger.error(f'Redirect handsheke error: {exc}')
             protocol.fail_connection()
             await protocol.wait_closed()
