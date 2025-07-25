@@ -2,7 +2,6 @@
 name = "wsmb"
 version = "0.1.0"
 description = ""
-authors = ["CrinitusFeles <crinitusfeles@gmail.com>"]
 readme = "README.md"
 dependencies = [
     "event",
