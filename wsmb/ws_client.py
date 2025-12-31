@@ -224,7 +224,7 @@ class WebSocket:
         try:
             await self._protocol.send(data)
         except websockets.exceptions.ConnectionClosedError:
-            self.connection_status = False
+            self.connection_status = True
             await self.reconnect()
             await self._protocol.send(data)
 
@@ -232,7 +232,7 @@ class WebSocket:
         try:
             await self._protocol.send(data)
         except websockets.exceptions.ConnectionClosedError:
-            self.connection_status = False
+            self.connection_status = True
             await self.reconnect()
             await self._protocol.send(data)
 
