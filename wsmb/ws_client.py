@@ -221,10 +221,20 @@ class WebSocket:
             await self.connect('')
 
     async def send(self, data: str | bytes) -> None:
-        await self._protocol.send(data)
+        try:
+            await self._protocol.send(data)
+        except websockets.exceptions.ConnectionClosedError:
+            self.connection_status = False
+            await self.reconnect()
+            await self._protocol.send(data)
 
     async def send_text(self, data: str) -> None:
-        await self._protocol.send(data)
+        try:
+            await self._protocol.send(data)
+        except websockets.exceptions.ConnectionClosedError:
+            self.connection_status = False
+            await self.reconnect()
+            await self._protocol.send(data)
 
     async def receive_text(self):
         return await self._protocol.recv()
