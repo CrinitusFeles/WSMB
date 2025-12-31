@@ -248,12 +248,12 @@ class BrokerClient:
         result: dict | None = self._tasks_result.get(msg.msg_id, None)
         self._tasks_result.pop(msg.msg_id)
         if result:
-            exception: str = result.get('exception', None)
-            details: str = result.get('details', None)
+            exception: str | None = result.get('exception', None)
+            details: str | None = result.get('details', None)
             result = result.get('answer', None)
             if exception:
                 logger.error(f'Got exception for {method}:\n'\
                              f'{exception}: {details}')
                 if self.on_exception:
-                    self.on_exception(exception, details)
+                    self.on_exception(exception, details or '')
         return result
