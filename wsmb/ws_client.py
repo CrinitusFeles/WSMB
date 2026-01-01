@@ -11,10 +11,10 @@ from websockets.uri import parse_uri, WebSocketURI
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
 import urllib.parse
 from event import Event
-
+from asyncio import Lock
 
 compress = ClientPerMessageDeflateFactory(compress_settings={"memLevel": 5})
-
+task_lock = Lock()
 
 class AuthorizationError(Exception):
     ...
@@ -213,12 +213,13 @@ class WebSocket:
 
     async def reconnect(self):
         if self.connection_status:
-            logger.debug('Trying to reconnect')
-            if not self._last_connection_data:
-                logger.error('Connection was never established')
-                return
-            await self.disconnect()
-            await self.connect('')
+            async with task_lock:
+                logger.debug('Trying to reconnect')
+                if not self._last_connection_data:
+                    logger.error('Connection was never established')
+                    return
+                await self.disconnect()
+                await self.connect('')
 
     async def send(self, data: str | bytes) -> None:
         try:
