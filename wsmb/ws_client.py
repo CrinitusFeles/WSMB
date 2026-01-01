@@ -122,7 +122,7 @@ class WebSocket:
         self.factory = partial(
             WebSocketClientProtocol,
             extensions=[compress],
-            ping_interval=20,
+            ping_interval=6,
             ping_timeout=3,
             close_timeout=3,
             max_size=2**40,
