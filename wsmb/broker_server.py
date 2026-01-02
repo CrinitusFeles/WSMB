@@ -80,6 +80,17 @@ class BrokerServer:
             ch.add_publisher(ws)
             self.channels.update({name: ch})
 
+    def set_channel(self, name: str, ws):
+        ch: Channel | None = self.channels.get(name, None)
+        subscribers = set()
+        if ch is not None:
+            subscribers = ch.subscribers()
+        else:
+            ch = Channel(name)
+            ch.add_publisher(ws)
+            ch.subscribers = subscribers
+            self.channels.update({name: ch})
+
     def subscribe(self, name: str, ws) -> None:
         if self.client and name == self.client:
             raise ValueError('Channal\'s name must not be the same as the '\
