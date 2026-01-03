@@ -130,6 +130,7 @@ class BrokerClient:
         except ValidationError:
             logger.error(f'got incorrect message: {data}')
             return None
+        logger.debug(f'Try route message: {msg}')
         if msg.dst != self.name and msg.dst != 'BROADCAST':
             logger.error(f'Got msg with incorrect destination '\
                          f'({msg.src}->{msg.dst} '\
@@ -139,6 +140,7 @@ class BrokerClient:
             self._handle_answer(msg)
             return None
         endpoints: list[Endpoint] = self.endpoints.get(msg.method, [])
+        logger.debug(f'Msg {msg} has endpoints: {[e.name for e in endpoints]}')
         if not ws:
             ws = self.ws
             if not ws:
