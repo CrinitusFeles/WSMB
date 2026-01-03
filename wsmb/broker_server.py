@@ -84,7 +84,7 @@ class BrokerServer:
         ch: Channel | None = self.channels.get(name, None)
         subscribers = set()
         if ch is not None:
-            subscribers = ch.subscribers()
+            subscribers = ch.subscribers
         else:
             ch = Channel(name)
             ch.add_publisher(ws)
