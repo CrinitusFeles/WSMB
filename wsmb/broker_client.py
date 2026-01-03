@@ -181,6 +181,7 @@ class BrokerClient:
             logger.error('Incorrect answer format! Answer data must be dict')
 
     async def _exec_handler(self, endpoint: Endpoint, msg: Msg):
+        logger.debug(f'Start endpoint {endpoint.name} handler {endpoint.handler}')
         if asyncio.iscoroutinefunction(endpoint.handler):
             task: Task = await execute_coroutine(endpoint.handler, msg)
             if msg.need_answer:
