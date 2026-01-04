@@ -223,6 +223,7 @@ class WebSocket:
 
     async def send(self, data: str | bytes) -> None:
         try:
+            logger.debug(f'Sending: {data}')
             await self._protocol.send(data)
         except websockets.exceptions.ConnectionClosedError:
             self.connection_status = True
@@ -231,6 +232,7 @@ class WebSocket:
 
     async def send_text(self, data: str) -> None:
         try:
+            logger.debug(f'Sending: {data}')
             await self._protocol.send(data)
         except websockets.exceptions.ConnectionClosedError:
             self.connection_status = True
