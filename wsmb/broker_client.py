@@ -16,6 +16,9 @@ from pyvalidate import create_dyn_model
 from pyvalidate.validator import args_to_kwargs
 
 
+logger.level("WS_TX", no=30, color="<yellow>")
+
+
 def execute_func(handler: HANDLER, msg: Msg) -> Msg:
     exception: str = ''
     exception_type: str = ''
@@ -201,6 +204,7 @@ class BrokerClient:
         if not self.ws:
             raise RuntimeError(f'Trying to send next data: {data}\n'\
                                f' but WS Client not defined')
+        logger.log('WS_TX', f'Sending: {data}')
         await self.ws.send_text(data)
 
     def _task_done(self, task: Task) -> None:

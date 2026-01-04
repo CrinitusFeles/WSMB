@@ -12,9 +12,11 @@ from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFact
 import urllib.parse
 from event import Event
 from asyncio import Lock
-logger.level("WS_TX", no=30, color="<yellow>")
+
+
 compress = ClientPerMessageDeflateFactory(compress_settings={"memLevel": 5})
 task_lock = Lock()
+
 
 class AuthorizationError(Exception):
     ...
@@ -223,7 +225,6 @@ class WebSocket:
 
     async def send(self, data: str | bytes) -> None:
         try:
-            logger.log('WS_TX', f'Sending: {data}')
             await self._protocol.send(data)
         except websockets.exceptions.ConnectionClosedError:
             self.connection_status = True
@@ -232,7 +233,6 @@ class WebSocket:
 
     async def send_text(self, data: str) -> None:
         try:
-            logger.log('WS_TX', f'Sending: {data}')
             await self._protocol.send(data)
         except websockets.exceptions.ConnectionClosedError:
             self.connection_status = True

@@ -7,6 +7,9 @@ from wsmb.broker_client import BrokerClient
 from wsmb.msg import Msg
 
 
+logger.level("WS_TX", no=30, color="<yellow>")
+
+
 class Channel:
     def __init__(self, name: str) -> None:
         self.name: str = name
@@ -27,10 +30,12 @@ class Channel:
 
     async def to_publisher(self, msg: Msg) -> None:
         for p in self.publishers:
+            logger.log('WS_TX', f'Sending: {msg}')
             await p.send_text(msg.model_dump_json())
 
     async def publish(self, msg: Msg) -> None:
         for s in self.subscribers:
+            logger.log('WS_TX', f'Sending: {msg}')
             await s.send_text(msg.model_dump_json())
 
 
