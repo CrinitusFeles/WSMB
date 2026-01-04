@@ -232,7 +232,7 @@ class WebSocket:
 
     async def send_text(self, data: str) -> None:
         try:
-            logger.debug(f'Sending: {data}')
+            logger.log('WS_TX', f'Sending: {data}')
             await self._protocol.send(data)
         except websockets.exceptions.ConnectionClosedError:
             self.connection_status = True
