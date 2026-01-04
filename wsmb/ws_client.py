@@ -12,7 +12,7 @@ from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFact
 import urllib.parse
 from event import Event
 from asyncio import Lock
-
+logger.level("WS_TX", no=30, color="<yellow>")
 compress = ClientPerMessageDeflateFactory(compress_settings={"memLevel": 5})
 task_lock = Lock()
 
@@ -214,7 +214,7 @@ class WebSocket:
     async def reconnect(self):
         if self.connection_status:
             async with task_lock:
-                logger.debug('Trying to reconnect')
+                logger.log('WS_TX', 'Trying to reconnect')
                 if not self._last_connection_data:
                     logger.error('Connection was never established')
                     return
@@ -223,7 +223,7 @@ class WebSocket:
 
     async def send(self, data: str | bytes) -> None:
         try:
-            logger.debug(f'Sending: {data}')
+            logger.log('WS_TX', f'Sending: {data}')
             await self._protocol.send(data)
         except websockets.exceptions.ConnectionClosedError:
             self.connection_status = True
