@@ -7,7 +7,7 @@ from wsmb.broker_client import BrokerClient
 from wsmb.msg import Msg
 
 
-logger.level("WS_TX", no=30, color="<yellow>")
+# logger.level("WS_TX", no=30, color="<yellow>")
 
 
 class Channel:
