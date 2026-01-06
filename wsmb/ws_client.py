@@ -103,7 +103,7 @@ class WebSocket:
             except TimeoutError:
                 logger.error('Connection timeout')
                 self.error.emit(TimeoutError('Connection timeout'))
-            except (ConnectionRefusedError, ConnectionResetError, socket.gaierror) as err:
+            except (ConnectionRefusedError, ConnectionResetError, socket.gaierror, OSError) as err:
                 logger.error(err)
                 await asyncio.sleep(1)
             except AuthorizationError:
@@ -216,7 +216,7 @@ class WebSocket:
     async def reconnect(self):
         if self.connection_status:
             async with task_lock:
-                logger.log('WS_TX', 'Trying to reconnect')
+                logger.debug('Trying to reconnect')
                 if not self._last_connection_data:
                     logger.error('Connection was never established')
                     return
