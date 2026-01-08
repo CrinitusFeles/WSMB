@@ -226,7 +226,8 @@ class WebSocket:
     async def send(self, data: str | bytes) -> None:
         try:
             await self._protocol.send(data)
-        except websockets.exceptions.ConnectionClosedError:
+        except (websockets.exceptions.ConnectionClosedError,
+                websockets.exceptions.ConnectionClosedOK):
             self.connection_status = True
             await self.reconnect()
             await self._protocol.send(data)
@@ -234,7 +235,8 @@ class WebSocket:
     async def send_text(self, data: str) -> None:
         try:
             await self._protocol.send(data)
-        except websockets.exceptions.ConnectionClosedError:
+        except (websockets.exceptions.ConnectionClosedError,
+                websockets.exceptions.ConnectionClosedOK):
             self.connection_status = True
             await self.reconnect()
             await self._protocol.send(data)
