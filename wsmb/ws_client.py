@@ -214,8 +214,8 @@ class WebSocket:
             logger.warning('WS client was not connected')
 
     async def reconnect(self):
-        if self.connection_status:
-            async with task_lock:
+        async with task_lock:
+            if not self.connection_status:
                 logger.debug('Trying to reconnect')
                 if not self._last_connection_data:
                     logger.error('Connection was never established')
@@ -227,8 +227,9 @@ class WebSocket:
         try:
             await self._protocol.send(data)
         except (websockets.exceptions.ConnectionClosedError,
-                websockets.exceptions.ConnectionClosedOK):
-            self.connection_status = True
+                websockets.exceptions.ConnectionClosedOK) as err:
+            logger.error(err)
+            self.connection_status = False
             await self.reconnect()
             await self._protocol.send(data)
 
@@ -236,8 +237,9 @@ class WebSocket:
         try:
             await self._protocol.send(data)
         except (websockets.exceptions.ConnectionClosedError,
-                websockets.exceptions.ConnectionClosedOK):
-            self.connection_status = True
+                websockets.exceptions.ConnectionClosedOK) as err:
+            logger.error(err)
+            self.connection_status = False
             await self.reconnect()
             await self._protocol.send(data)
 
@@ -252,9 +254,11 @@ class WebSocket:
                 self.received.emit(data)
         except websockets.exceptions.ConnectionClosedError as err:
             logger.error(f'Lost connection with server: {err}')
+            self.connection_status = False
             self.error.emit(err)
         except websockets.exceptions.ConnectionClosedOK as exc:
-            logger.debug(exc)
+            self.connection_status = False
+            logger.error(exc)
 
     def set_token(self, token: str):
         self.token = token
