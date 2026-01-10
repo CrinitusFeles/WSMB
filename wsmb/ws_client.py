@@ -113,8 +113,7 @@ class WebSocket:
 
     async def _connect(self, uri: str) -> bool:
         if self.token:
-            token_uri += f'?token={self.token}'
-            self._uri: str = token_uri
+            self._uri: str = uri + f'?token={self.token}'
         else:
             self._uri = uri
         self._wsuri: WebSocketURI = parse_uri(self._uri)
