@@ -82,12 +82,11 @@ class WebSocket:
             uri = self._last_connection_data
         else:
             uri = uri.replace('https', 'wss').replace('http', 'ws') + self.endpoint
-            if self.token:
-                uri += f'?token={self.token}'
+
         if self.connection_status:
             logger.warning(f'WSClient already connected to '\
-                           f'{self._last_connection_data[0]}')
-            if self._last_connection_data[0] == uri:
+                           f'{self._last_connection_data}')
+            if self._last_connection_data == uri:
                 return True
             else:
                 logger.warning('For connecting to another url use '\
@@ -113,7 +112,11 @@ class WebSocket:
         return False
 
     async def _connect(self, uri: str) -> bool:
-        self._uri: str = uri
+        if self.token:
+            token_uri += f'?token={self.token}'
+            self._uri: str = token_uri
+        else:
+            self._uri = uri
         self._wsuri: WebSocketURI = parse_uri(self._uri)
 
         kwargs: dict = {}
