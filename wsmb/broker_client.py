@@ -133,7 +133,7 @@ class BrokerClient:
         except ValidationError:
             logger.error(f'got incorrect message: {data}')
             return None
-        logger.debug(f'Try route message: {msg}')
+        # logger.debug(f'Try route message: {msg}')
         if msg.dst != self.name and msg.dst != 'BROADCAST':
             logger.error(f'Got msg with incorrect destination '\
                          f'({msg.src}->{msg.dst} '\
