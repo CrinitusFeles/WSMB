@@ -210,10 +210,10 @@ class WebSocket:
                 self.read_task.cancel()
                 self.read_task = None
             await self._protocol.close(reason=reason)
-            self.disconnected.emit()
-            logger.debug(f'Disconnected from {self._uri}')
         else:
             logger.warning('WS client was not connected')
+        self.disconnected.emit()
+        logger.debug(f'Disconnected from {self._uri}')
 
     async def reconnect(self):
         async with task_lock:
