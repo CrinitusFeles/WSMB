@@ -33,6 +33,8 @@ def execute_func(handler: HANDLER, msg: Msg) -> Msg:
         logger.error(err)
         exception = str(err)
         exception_type = type(err).__name__
+        logger.error(f'Got exception in handler: {handler.__name__}')
+        logger.error(err)
     if exception:
         answer = msg.exception(exception_type, exception)
     else:
