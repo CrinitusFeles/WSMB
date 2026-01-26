@@ -3,6 +3,7 @@ import asyncio
 from asyncio import CancelledError, Task
 from datetime import UTC, datetime, timedelta
 from enum import Enum
+from copy import deepcopy
 from functools import wraps, partial
 import json
 from typing import Any, Callable
@@ -151,7 +152,7 @@ class BrokerClient:
         if len(endpoints):
             self._incoming.update({msg: (ws, datetime.now(UTC))})
             for endpoint in endpoints:
-                await self._validate_exec(endpoint, msg)
+                await self._validate_exec(endpoint, deepcopy(msg))
         else:
             logger.warning(f'unsubscribed method: {data}')
 
