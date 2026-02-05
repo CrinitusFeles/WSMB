@@ -221,7 +221,8 @@ class BrokerClient:
             result: Any = task.result()
             answer: Msg = msg.answer(result)
         self.ws, _ = self._incoming.pop(answer)
-        asyncio.create_task(self._send(answer.model_dump_json()))
+        asyncio.create_task(self._send(answer.model_dump_json()),
+                            name='broker_client_send_answer')
         postroute = self.postrouters.get(answer.method)
         if postroute:
             postroute(answer)
@@ -239,7 +240,8 @@ class BrokerClient:
         return await self.publish('BROADCAST', method, data)
 
     async def _wait_message(self, msg_id: UUID, timeout: float) -> bool:
-        task: Task = asyncio.create_task(asyncio.sleep(timeout))
+        task: Task = asyncio.create_task(asyncio.sleep(timeout),
+                                         name='broker_client_wait_answer')
         self._waiting_tasks.update({msg_id: task})
         try:
             await task

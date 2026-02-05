@@ -59,7 +59,7 @@ class HeartBeatWorker:
                     await self._make_connection()
                 if self._is_connected():
                     coro: Coroutine = asyncio.sleep(self.period_sec)
-                    self._sleep_task = asyncio.create_task(coro)
+                    self._sleep_task = asyncio.create_task(coro, name='heartbeat_sleep')
                     await asyncio.sleep(0.001)
                     try:
                         await self._sleep_task

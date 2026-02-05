@@ -181,7 +181,8 @@ class WebSocket:
 
         self._protocol = protocol
         logger.success(f'Connected to {self._uri}')
-        self.read_task = self._loop.create_task(self._read_routine())
+        self.read_task = self._loop.create_task(self._read_routine(),
+                                                name='web_socket_read_routine')
         self.read_task.add_done_callback(self._read_done_callback)
         self.connected.emit()
         self._last_connection_data = uri
@@ -190,7 +191,7 @@ class WebSocket:
 
     def _read_done_callback(self, task: asyncio.Task):
         self.read_task = None
-        asyncio.create_task(self._reconnect(), name='Reconnect')
+        asyncio.create_task(self._reconnect(), name='web_socket_reconnect')
 
     async def _reconnect(self):
         try:
