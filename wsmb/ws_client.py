@@ -8,7 +8,6 @@ from functools import partial
 import websockets
 from event import Event
 from loguru import logger
-from websockets.asyncio.async_timeout import timeout
 from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.legacy.exceptions import RedirectHandshake
@@ -96,7 +95,7 @@ class WebSocket:
             counter += 1
             logger.debug(f'Trying to connect to {uri} (try {counter})')
             try:
-                async with timeout(5):
+                async with asyncio.timeout(5):
                     if await self._connect(uri):
                         return True
             except TimeoutError:
