@@ -1,21 +1,23 @@
 
 import asyncio
+import json
 from asyncio import CancelledError, Task
+from collections.abc import Callable
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from copy import deepcopy
-from functools import wraps, partial
-import json
-from typing import Any, Callable
+from functools import partial, wraps
+from typing import Any
 from uuid import UUID
+
 from loguru import logger
 from pydantic import BaseModel, ValidationError
-from wsmb.router import HANDLER, Endpoint, Router
-from wsmb.msg import Msg
-from wsmb.ws_client import WebSocket
 from pyvalidate import create_dyn_model
 from pyvalidate.validator import args_to_kwargs
 
+from wsmb.msg import Msg
+from wsmb.router import HANDLER, Endpoint, Router
+from wsmb.ws_client import WebSocket
 
 logger.level("WS_TX", no=30, color="<yellow>")
 

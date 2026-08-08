@@ -1,18 +1,18 @@
 import asyncio
-from functools import partial
 import socket
-from typing import Awaitable, Callable
-from loguru import logger
-import websockets
-from websockets.asyncio.async_timeout import timeout
-from websockets.legacy.exceptions import RedirectHandshake
-from websockets.legacy.client import WebSocketClientProtocol
-from websockets.uri import parse_uri, WebSocketURI
-from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
 import urllib.parse
-from event import Event
 from asyncio import Lock
+from collections.abc import Awaitable, Callable
+from functools import partial
 
+import websockets
+from event import Event
+from loguru import logger
+from websockets.asyncio.async_timeout import timeout
+from websockets.extensions.permessage_deflate import ClientPerMessageDeflateFactory
+from websockets.legacy.client import WebSocketClientProtocol
+from websockets.legacy.exceptions import RedirectHandshake
+from websockets.uri import WebSocketURI, parse_uri
 
 compress = ClientPerMessageDeflateFactory(compress_settings={"memLevel": 5})
 task_lock = Lock()

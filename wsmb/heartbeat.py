@@ -1,11 +1,12 @@
 
 import asyncio
+from collections.abc import Coroutine
 from dataclasses import dataclass
-from typing import Coroutine
+
 import httpx
-from httpx import Response, ConnectTimeout
-from loguru import logger
 from event import Event
+from httpx import ConnectTimeout, Response
+from loguru import logger
 
 from wsmb.ws_client import WebSocket
 

@@ -1,11 +1,12 @@
+from collections.abc import Awaitable, Callable  #, Coroutine
 from enum import Enum, EnumType
 from functools import wraps
-from typing import Awaitable, Callable, Type  #, Coroutine
-from pydantic import ValidationError
+
 from loguru import logger
+from pydantic import ValidationError
+
 from wsmb.broker_client import BrokerClient
 from wsmb.msg import Msg
-
 
 # logger.level("WS_TX", no=30, color="<yellow>")
 
@@ -48,7 +49,7 @@ class BrokerServer:
         self.client: BrokerClient | None = None
         self._inspect_methods: dict[str, INSPECTOR] = {}
 
-    def _inspect(self, endpoint: str | Enum | Type[Enum],
+    def _inspect(self, endpoint: str | Enum | type[Enum],
                  handler: INSPECTOR) -> None:
         if isinstance(endpoint, EnumType):
             self._inspect_methods.update({ep.name: handler for ep in endpoint})
@@ -57,7 +58,7 @@ class BrokerServer:
             endpoint = endpoint.name
         self._inspect_methods.update({endpoint: handler})
 
-    def inspect(self, endpoint: str | Enum | Type[Enum]) -> Callable:
+    def inspect(self, endpoint: str | Enum | type[Enum]) -> Callable:
         def _subscriber(func: INSPECTOR):# -> _Wrapped[Callable[[Msg], Any], Awaitable[tuple[bool, Msg]...:
             self._inspect(endpoint, func)
             @wraps(func)
